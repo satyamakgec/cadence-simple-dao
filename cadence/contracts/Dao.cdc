@@ -2,8 +2,17 @@ import VotingToken from "./VotingToken.cdc"
 
 pub contract Dao {
 
+    /// Minimum deposit needed to create a proposal.
     pub let minimumDeposit: UFix64
 
+    /// It is a data structure of proposal where the description and related choices stored.
+    /// It also stored the weights assigned to the choices.
+    /// Note - Only allowing to have 4 choices
+    /// Ex - Choice 1 -> x weight
+    ///    - Choice 2 -> y weight
+    ///    - Choice 3 -> z weight
+    ///    - Choice 4 -> a weight
+    /// If a>x>y>z then a is the choice that is winner for the given proposal.
     pub struct Proposal {
         pub let description: String
         pub let choices: [String; 4]
@@ -16,10 +25,22 @@ pub contract Dao {
         }
     }
 
+
+    /// Ballot resource 
+    /// It is a voting ballot which would allow to vote by the users.
+    /// Anybody capability which has more the minimum deposit balance can create the ballot
+    /// by providing the details of the proposal and at what checkpoint the voting power is going to used
+    /// to conculde the result of the ballot.
+    /// Then users can vote using there voting power.
     pub resource Ballot {
         pub var proposalDetails: Proposal
         pub let checkpointId: UInt16
+        /// Capability of the creator of the ballot get stored to return the funds that get escrowed/staked in the 
+        /// contract during the creation of the ballot. Once ballot get conculded all the staked funds return backec
+        /// to the given capability [TODO functionality]
         pub let creatorCapability: Capability<&AnyResource{VotingToken.Recevier}>
+
+        /// Dictionary to keep track of the addresses that already voted on the ballot.
         access(self) var voters: {Address: Bool}
 
         init(desc: String, choices: [String;4], checkpointId: UInt16, creatorCapability: Capability<&AnyResource{VotingToken.Recevier}>) {
@@ -58,6 +79,9 @@ pub contract Dao {
         return <- ballot
     }
 
+
+    /// Conculde the given ballot return the winning choice string or event could be emitted to keep
+    /// track offchain and then destroy the ballot afterwards.
     pub fun conclude(ballot: @Ballot): String {
         var max = 0.0
         var winingChoice: UInt16 = 0

@@ -1,6 +1,14 @@
 
 pub contract VotingToken {
 
+    pub let vaultPath: StoragePath
+
+    pub let vaultPublicPath: PublicPath
+
+    pub let minterResourcePath: StoragePath
+
+    pub let administratorResourcePath: StoragePath
+
     pub var totalSupply: UFix64
 
     /// Checkpoint is the Id at which the snapshot of the balance taken.
@@ -48,7 +56,17 @@ pub contract VotingToken {
     /// If `true` as status get passed then given account delegating there voting power to
     /// the given capability and in future can't vote using there voting power until delegation get revoked.
     pub resource interface DelegateVotingPower {
-        pub fun delegateVotingPower(status: Bool, delegateTo: Capability<&AnyResource{VotingPower}>)
+        pub fun delegateVotingPower(status: Bool, delegateTo: Address)
+    }
+
+    /// This should always be a private resource
+    pub resource interface Vote {
+
+        pub let impression: Capability<&AnyResource{VotingPower}>
+
+        init(impression: Capability<&AnyResource{VotingPower}>) {
+            self.impression = impression
+        }
     }
 
     pub resource Vault: Provider, Recevier, Balance, VotingPower, DelegateVotingPower {
@@ -60,7 +78,7 @@ pub contract VotingToken {
         pub var isVotingPowerDelegated: Bool
 
         /// Optional variable which contains the capability of the delegate.
-        pub var delegateTo: Capability<&AnyResource{VotingPower}>?
+        access(self) var delegateTo: Address?
 
         /// It the checkpoint Id at which the last snapshot taken for the given vault.
         pub var lastCheckpointId: UInt16
@@ -118,16 +136,22 @@ pub contract VotingToken {
         /// delegate function of the User B by passing its own capability.
         /// Note - User B can't be a delegate of anymore than the `maximumDelegate`.
         pub fun delegate(cap: Capability<&AnyResource{DelegateVotingPower,VotingPower}>) {
+            pre {
+                cap.check() : "Not a valid capability"
+            }
             let capRef = cap.borrow()?? panic("Unable to borrow the ref")
             if self.delegateeOf.length > Int(self.maximumDelegate) {
                 panic("Delegatee limit reached")
             }
-            capRef.delegateVotingPower(status: true, delegateTo: cap)
+            capRef.delegateVotingPower(status: true, delegateTo: self.account.address)
             self.delegateeOf.append(cap)
         }
 
         /// Switch to know the owner of the delegate power.
-        pub fun delegateVotingPower(status: Bool, delegateTo: Capability<&AnyResource{VotingPower}>) {
+        pub fun delegateVotingPower(status: Bool, delegateTo: Address) {
+            pre {
+                delegateTo.check() : "Not a valid capability"
+            }
             self.isVotingPowerDelegated = status
             self.delegateTo = delegateTo
         }
@@ -160,9 +184,17 @@ pub contract VotingToken {
         return <- create Vault(balance: 0.0)
     }
 
+    pub fun createVoteImpression(impression: Capability<&AnyResource{VotingPower}>): @Vote {
+        return <- create Vote(impression: impression)
+    }
+
     pub resource Minter {
 
         pub fun mint(amount: UFix64, recepient: Capability<&AnyResource{Recevier}>)  {
+            pre {
+                recepient.check() : "Not a valid capability"
+                amount > 0.0 : "Not allowed to mint 0 amount"
+            }
             let ref = recepient.borrow()?? panic("Not able to borrow")
             let token <- create Vault(balance:amount)
             VotingToken.totalSupply = VotingToken.totalSupply + amount
@@ -171,7 +203,7 @@ pub contract VotingToken {
 
     }
 
-    pub resource Adminstrator {
+    pub resource Administrator {
         /// Allow administrator to create the checkpoint.
         pub fun createCheckpoint() {
             VotingToken.checkpointId = VotingToken.checkpointId + 1
@@ -179,10 +211,21 @@ pub contract VotingToken {
     }
 
     init() {
+        self.vaultPath = /storage/CadenceVotingTokenTutorialVault
+        self.vaultPublicPath = /public/CadenceVotingTokenTutorialVaultPublic
+        self.minterResourcePath = /storage/CadenceVotingTokenTutorialMinter
+        self.administratorResourcePath = /storage/CadenceVotingTokenTutorialAdministrator
         self.totalSupply = 0.0
         self.checkpointId = 0
         let vault <- self.createEmptyVault()
-        self.account.save(<-vault, to: /storage/CadenceVotingTokenTutorialVault)
+        self.account.save(<-vault, to: self.vaultPath)
+        self.account.save(<- create Minter(), to: self.minterResourcePath)
+        self.account.save(<- create Administrator(), to: self.administratorResourcePath)
+
+        // Creating the private capabilities so it can be shared with different accounts
+        self.account.link<&VotingToken.Minter>(/private/CadenceVotingTokenTutorialMinterPrivate, target: self.minterResourcePath)
+        self.account.link<&VotingToken.Administrator>(/private/CadenceVotingTokenTutorialAdministratorPrivate, target: self.administratorResourcePath)
+
     }
 
 }

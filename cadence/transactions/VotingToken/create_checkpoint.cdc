@@ -1,9 +1,10 @@
 import VotingToken from "../../contracts/VotingToken.cdc"
 
+/// Used to create the checkpoint by the adminstrator
 transaction {
 
     // Store the private capability ref of the adminstrator resource
-    var administratorRef : Capability<&VotingToken.Administrator>
+    var administratorRef : &VotingToken.Administrator
 
     let currentCheckpointId : UInt16 
 
@@ -23,12 +24,11 @@ transaction {
         self.administratorRef.createCheckpoint()
 
         log("Checkpoint successfully created")
+        log("Checkpoint Id after the checkpoint creation")
+        log(VotingToken.checkpointId)
     }
 
     post {
-        assert(self.currentCheckpointId + UInt16(1) == VotingToken.checkpointId, message: "Incorrect checkpoint update happen")
-
-        log("Checkpoint Id after the checkpoint creation")
-        log(VotingToken.checkpointId)
+        (self.currentCheckpointId + 1) == VotingToken.checkpointId : "Incorrect checkpoint update happen"
     }
 }

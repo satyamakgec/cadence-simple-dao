@@ -1,18 +1,23 @@
 import VotingToken from "../../contracts/VotingToken.cdc"
 
+/// Transfer tokens from signer to the recepient
 transaction(recepient: Address) {
 
-    var senderRef: Capability<&VotingToken.Vault>
+    var senderRef: &VotingToken.Vault
 
-    var receiverCapRef: Capability<&VotingToken.Vault{VotingToken.Recevier, VotingToken.Balance}>
+    var receiverCapRef: &VotingToken.Vault{VotingToken.Recevier, VotingToken.Balance}
 
     prepare(signer: AuthAccount) {
 
         self.senderRef = signer.borrow<&VotingToken.Vault>(from: VotingToken.vaultPath)
+                     ?? panic("Unable to borrow the sender capability reference")
 
-        self.receiverCapRef = getAccount(recepient)
-                                .getCapability<&VotingToken.Vault{VotingToken.Recevier, VotingToken.Balance}>()
-                                .check() : "Capability doesn't exists"
+        let receiverCap = getAccount(recepient)
+                                .getCapability<&VotingToken.Vault{VotingToken.Recevier, VotingToken.Balance}>(VotingToken.vaultPublicPath)
+        if !receiverCap.check() {
+            panic("Capability doesn't exists")
+        }
+        self.receiverCapRef = receiverCap.borrow()!
     }
 
     execute {
@@ -23,3 +28,4 @@ transaction(recepient: Address) {
         log(self.receiverCapRef.balance)
     }
 }
+ 
